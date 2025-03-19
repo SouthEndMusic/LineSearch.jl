@@ -28,14 +28,16 @@ be specified if analytic jacobian/jvp/vjp is not available.
     maxstep
     initial_alpha
     maxiters::Int
+    check_step::Bool
 end
 
 function BackTracking(; autodiff = nothing, c_1 = 1e-4, ρ_hi = 0.5, ρ_lo = 0.1,
         order::Union{Int, Val{2}, Val{3}} = 3, maxstep = Inf,
-        initial_alpha = true, maxiters::Int = 1_000)
+        initial_alpha = true, maxiters::Int = 1_000, check_step::Bool = false)
     order = order isa Val ? order : Val(order)
     @assert order isa Val{2} || order isa Val{3}
-    return BackTracking(autodiff, c_1, ρ_hi, ρ_lo, order, maxstep, initial_alpha, maxiters)
+    return BackTracking(
+        autodiff, c_1, ρ_hi, ρ_lo, order, maxstep, initial_alpha, maxiters, check_step)
 end
 
 @concrete mutable struct BackTrackingCache <: AbstractLineSearchCache
@@ -51,6 +53,7 @@ end
     stats <: Union{SciMLBase.NLStats, Nothing}
     alg <: BackTracking
     maxiters::Int
+    check_step::Bool
 end
 
 function CommonSolve.init(
@@ -85,7 +88,17 @@ function CommonSolve.init(
 
     return BackTrackingCache(
         prob.f, prob.p, ϕ, ϕdϕ, T(alpha), T(alg.initial_alpha), deriv_op,
-        u_cache, fu_cache, stats, alg, alg.maxiters)
+        u_cache, fu_cache, stats, alg, alg.maxiters, alg.check_step)
+end
+
+function check_step(cache::BackTrackingCache, α₂, ϕ, ϕx₁, T)
+    if cache.check_step
+        o = one(T)
+        ϕ₁ = ϕ(o)
+        ϕx₁ < ϕ₁ ? α₂ : o
+    else
+        α₂
+    end
 end
 
 function CommonSolve.solve!(cache::BackTrackingCache, u, du)
@@ -108,7 +121,7 @@ function CommonSolve.solve!(cache::BackTrackingCache, u, du)
     end
 
     ϕx₁ ≤ ϕ₀ + T(cache.alg.c_1) * α₂ * dϕ₀ &&
-        return LineSearchSolution(α₂, ReturnCode.Success)
+        return LineSearchSolution(check_step(cache, α₂, ϕ, ϕx₁, T), ReturnCode.Success)
     α_tmp = -(dϕ₀ * α₂^2) / (2 * (ϕx₁ - ϕ₀ - dϕ₀ * α₂))
     α₁ = α₂
     α_tmp = min(α_tmp, α₂ * T(cache.alg.ρ_hi))
@@ -117,7 +130,7 @@ function CommonSolve.solve!(cache::BackTrackingCache, u, du)
 
     for _ in (iteration + 1):(cache.maxiters)
         ϕx₁ ≤ ϕ₀ + T(cache.alg.c_1) * α₂ * dϕ₀ &&
-            return LineSearchSolution(α₂, ReturnCode.Success)
+            return LineSearchSolution(check_step(cache, α₂, ϕ, ϕx₁, T), ReturnCode.Success)
 
         α_tmp = compute_alpha_backtracking(cache.alg.order, T, dϕ₀, ϕ₀, ϕx₀, ϕx₁, α₁, α₂)
 
