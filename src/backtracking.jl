@@ -92,13 +92,16 @@ function CommonSolve.init(
 end
 
 function check_step(cache::BackTrackingCache, α₂, ϕ, ϕx₁, T)
-    if cache.check_step
+    α₂ = if cache.check_step
         o = one(T)
         ϕ₁ = ϕ(o)
         ϕx₁ < ϕ₁ ? α₂ : o
+
     else
         α₂
     end
+    @show α₂
+    α₂
 end
 
 function CommonSolve.solve!(cache::BackTrackingCache, u, du)
