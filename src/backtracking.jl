@@ -92,6 +92,7 @@ function CommonSolve.init(
 end
 
 function check_step(cache::BackTrackingCache, α₂, ϕ, ϕx₁, T)
+    @show α₂
     α₂ = if cache.check_step
         o = one(T)
         ϕ₁ = ϕ(o)
